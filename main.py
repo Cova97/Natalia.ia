@@ -2,19 +2,28 @@ from services.voice_service import VoiceService
 from dotenv import load_dotenv
 import os
 
-# Cargar las variables de entorno desde el archivo .env
+# Configuración avanzada
 load_dotenv()
 
-# Obtener la clave de API de OpenAI desde las variables de entorno
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# Verificación de variables críticas
+required_env_vars = ["OPENAI_API_KEY"]
+missing_vars = [var for var in required_env_vars if not os.getenv(var)]
 
-if __name__ == "__main__":
-    # Verificar si la clave de API está configurada
-    if not OPENAI_API_KEY:
-        raise ValueError("La clave de API de OpenAI no está configurada. Asegúrate de tener un archivo .env con OPENAI_API_KEY.")
+if missing_vars:
+    raise EnvironmentError(f"Faltan variables de entorno: {', '.join(missing_vars)}")
 
-    # Crear una instancia del servicio de voz
-    natalia = VoiceService(OPENAI_API_KEY)
+# Inicialización del servicio
+natalia = VoiceService(os.getenv("OPENAI_API_KEY"))
 
-    # Iniciar el asistente de voz
+# Mensaje de inicio personalizado
+print("\n" + "="*40)
+print("Sistema Natalia - Asistente Virtual V2.0")
+print("="*40 + "\n")
+
+# Ejecución principal
+try:
     natalia.run()
+except Exception as e:
+    print(f"Error inesperado: {e}")
+finally:
+    print("\nSistema apagado correctamente.")

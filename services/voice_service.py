@@ -1,124 +1,165 @@
 import speech_recognition as sr
 import pyttsx3
 import openai
+import os
+from datetime import datetime
 
 class VoiceService:
     def __init__(self, openai_api_key):
-        """Inicializa el servicio de voz y configura OpenAI."""
-        # Configuración de OpenAI
+        """Inicializa el servicio de voz con configuración mejorada."""
         openai.api_key = openai_api_key
-
-        # Inicializar el motor de síntesis de voz
+        
+        # Configuración de voz mejorada
         self.engine = pyttsx3.init()
-
-        # Configuración de la voz
-        voices = self.engine.getProperty('voices')  # Obtener las voces disponibles
-        self.engine.setProperty('voice', voices[0].id)  # Cambia a voices[1].id para una voz femenina (según el sistema)
-        self.engine.setProperty('rate', 180)  # Velocidad de habla (por defecto es 200)
-        self.engine.setProperty('volume', 1.0)  # Volumen (0.0 a 1.0)
-
-        # Inicializar el reconocedor de voz
+        self.listen_timeout = int(os.getenv("LISTEN_TIMEOUT", 5))
+        self._configure_voice()
+        
+        # Reconocedor mejorado
         self.recognizer = sr.Recognizer()
-
-        # Conjunto de comandos de desactivación (más eficiente que una lista)
+        self.recognizer.dynamic_energy_threshold = True
+        self.recognizer.pause_threshold = 0.8
+        
+        # Comandos locales
         self.deactivation_phrases = {
-            "muchas gracias por la información",
-            "adiós",
-            "hasta luego",
-            "gracias",
-            "nos vemos",
-            "chao",
-            "terminar",
-            "desactivar"
+            "muchas gracias", "adiós", "hasta luego", "gracias", 
+            "nos vemos", "chao", "terminar", "desactivar"
+        }
+        self.local_commands = {
+            "hora": self._get_time,
+            "fecha": self._get_date,
+            "cómo estás": lambda: "¡Estoy funcionando perfectamente!",
         }
 
+    def _configure_voice(self):
+        """Configura una voz en español si está disponible."""
+        voices = self.engine.getProperty('voices')
+        spanish_voices = [v for v in voices if "spanish" in v.name.lower()]
+        
+        if spanish_voices:
+            self.engine.setProperty('voice', spanish_voices[0].id)
+        else:
+            print("Advertencia: No se encontró voz en español. Usando voz predeterminada.")
+        
+        self.engine.setProperty('rate', 170)
+        self.engine.setProperty('volume', 0.9)
+
+    def _get_time(self):
+        """Devuelve la hora actual formateada."""
+        return datetime.now().strftime("Son las %H:%M")
+
+    def _get_date(self):
+        """Devuelve la fecha actual formateada."""
+        return datetime.now().strftime("Hoy es %d de %B del %Y")
+
     def speak(self, text):
-        """Función para que el asistente hable."""
-        print(f"Natalia: {text}")  # Imprimir en consola
-        self.engine.say(text)      # Decir el texto
-        self.engine.runAndWait()   # Esperar a que termine de hablar
+        """Función mejorada con manejo de errores."""
+        try:
+            print(f"Natalia: {text}")
+            self.engine.say(text)
+            self.engine.runAndWait()
+        except Exception as e:
+            print(f"Error en síntesis de voz: {e}")
 
     def listen_for_activation(self):
-        """Función para escuchar continuamente hasta que se detecte el comando de activación."""
+        """Escucha mejorada con ajuste de ruido ambiental."""
         with sr.Microphone() as source:
-            print("Esperando el comando de activación... Di 'Natalia' para comenzar.")
+            print("\n🔴 Modo inactivo. Di 'Natalia' para activar...")
+            self.recognizer.adjust_for_ambient_noise(source, duration=1)
+            
             while True:
-                print("Escuchando...")
                 try:
-                    audio = self.recognizer.listen(source, timeout=5)  # Escuchar con un timeout de 5 segundos
-                    command = self.recognizer.recognize_google(audio, language="es-ES")
-                    print(f"Comando reconocido: {command}")
-                    if "natalia" in command.lower():
-                        self.speak("Hola, soy Natalia. ¿En qué puedo ayudarte?")
-                        return True  # Activar el sistema
+                    audio = self.recognizer.listen(source, timeout=self.listen_timeout)
+                    command = self.recognizer.recognize_google(audio, language="es-ES").lower()
+                    print(f"Usuario: {command}")
+                    
+                    if "natalia" in command:
+                        self.speak("¿En qué puedo ayudarte?")
+                        return True
+                        
                 except sr.WaitTimeoutError:
-                    continue  # Continuar escuchando si no se detecta audio
-                except sr.UnknownValueError:
-                    print("No se entendió el comando.")
-                except sr.RequestError:
-                    print("Error al conectar con el servicio de reconocimiento de voz.")
+                    continue
+                except Exception as e:
+                    print(f"Error de reconocimiento: {e}")
+                    continue
 
     def listen_for_command(self):
-        """Función para escuchar y reconocer comandos de voz después de la activación."""
+        """Escucha activa con feedback visual."""
         with sr.Microphone() as source:
-            print("Escuchando tu solicitud...")
+            print("\n🟢 Escuchando...")
+            self.recognizer.adjust_for_ambient_noise(source)
+            
             try:
-                audio = self.recognizer.listen(source, timeout=5)  # Escuchar con un timeout de 5 segundos
-                command = self.recognizer.recognize_google(audio, language="es-ES")
-                print(f"Comando reconocido: {command}")
-                return command.lower()
+                audio = self.recognizer.listen(source, timeout=self.listen_timeout)
+                command = self.recognizer.recognize_google(audio, language="es-ES").lower()
+                print(f"Usuario: {command}")
+                return command
+                
             except sr.WaitTimeoutError:
-                self.speak("No escuché nada. ¿Puedes repetirlo?")
+                self.speak("No escuché tu solicitud. ¿Podrías repetirla?")
                 return None
-            except sr.UnknownValueError:
-                self.speak("No entendí lo que dijiste.")
-                return None
-            except sr.RequestError:
-                self.speak("Error al conectar con el servicio de reconocimiento de voz.")
+            except Exception as e:
+                print(f"Error de audio: {e}")
                 return None
 
+    def _handle_local_command(self, command):
+        """Maneja comandos locales sin usar OpenAI."""
+        for key, action in self.local_commands.items():
+            if key in command:
+                response = action()
+                self.speak(response)
+                return True
+        return False
+
     def ask_openai(self, prompt):
-        """Función para enviar una solicitud a OpenAI y obtener una respuesta."""
+        """Consulta mejorada a OpenAI con manejo de contexto."""
         try:
             response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",  # Usar el modelo GPT-3.5-turbo
+                model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "Eres un asistente virtual llamado Natalia. Responde de manera amable y útil."},
+                    {"role": "system", "content": "Eres Natalia, un asistente virtual en español. Sé concisa y amable."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=150  # Limitar la longitud de la respuesta
+                max_tokens=250,
+                temperature=0.7
             )
             return response.choices[0].message['content'].strip()
         except Exception as e:
-            print(f"Error al conectar con OpenAI: {e}")
-            return "Lo siento, no pude procesar tu solicitud en este momento."
-
-    def is_deactivation_command(self, command):
-        """Verifica si el comando es una frase de desactivación."""
-        return any(phrase in command for phrase in self.deactivation_phrases)
+            print(f"Error OpenAI: {e}")
+            return "Parece que tengo problemas de conexión. ¿Podrías intentarlo de nuevo?"
 
     def process_command(self, command):
-        """Función para procesar los comandos reconocidos."""
+        """Procesamiento mejorado de comandos."""
+        if not command:
+            return True
+            
         if self.is_deactivation_command(command):
-            self.speak("De nada. ¡Estaré aquí si me necesitas!")
-            return False  # Desactivar el sistema
-        elif "natalia" in command and "estás ahí" in command:
-            self.speak("Sí, estoy aquí. ¿En qué puedo ayudarte?")
-            return True  # Mantener el sistema activo
-        else:
-            # Enviar el comando a OpenAI para obtener una respuesta
-            response = self.ask_openai(command)
-            self.speak(response)
-            return True  # Mantener el sistema activo
+            self.speak("¡Hasta luego! Estaré aquí si me necesitas.")
+            return False
+            
+        if self._handle_local_command(command):
+            return True
+            
+        self.speak("Procesando tu solicitud...")
+        response = self.ask_openai(command)
+        self.speak(response)
+        return True
+
+    def is_deactivation_command(self, command):
+        """Detección mejorada de comandos de desactivación."""
+        return any(phrase in command for phrase in self.deactivation_phrases)
 
     def run(self):
-        """Inicia el asistente de voz."""
+        """Bucle principal mejorado."""
         while True:
-            # Esperar a que se detecte el comando de activación
-            if self.listen_for_activation():
-                # Escuchar y procesar comandos después de la activación
-                active = True
-                while active:
-                    command = self.listen_for_command()
-                    if command:
-                        active = self.process_command(command)
+            try:
+                if self.listen_for_activation():
+                    active = True
+                    while active:
+                        command = self.listen_for_command()
+                        active = self.process_command(command) if command else True
+            except KeyboardInterrupt:
+                self.speak("Saliendo del sistema...")
+                break
+            except Exception as e:
+                print(f"Error crítico: {e}")
+                self.speak("Voy a reiniciar mi sistema...")
